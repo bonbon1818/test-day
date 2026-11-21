@@ -114,13 +114,15 @@ export async function ensureUserProfileAndSyncLogin(
       seededPractice?: boolean;
     };
     seededPractice = data.seededPractice === true;
-    try {
-      await updateDoc(userRef, {
-        displayName,
-        updatedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, userPath);
+    if (data.displayName !== displayName) {
+      try {
+        await updateDoc(userRef, {
+          displayName,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, userPath);
+      }
     }
   }
 
@@ -143,14 +145,27 @@ export async function ensureUserProfileAndSyncLogin(
       handleFirestoreError(error, OperationType.CREATE, privatePath);
     }
   } else {
-    try {
-      await updateDoc(privateRef, {
-        email,
-        lastLoginAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, privatePath);
+    const privateData = privateSnap.data() as {
+      email?: string;
+      lastLoginAt?: unknown;
+    };
+    const lastLoginMs =
+      privateData.lastLoginAt instanceof Timestamp
+        ? privateData.lastLoginAt.toMillis()
+        : 0;
+    const needsSync =
+      privateData.email !== email || Date.now() - lastLoginMs > 10 * 60 * 1000;
+
+    if (needsSync) {
+      try {
+        await updateDoc(privateRef, {
+          email,
+          lastLoginAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, privatePath);
+      }
     }
   }
 

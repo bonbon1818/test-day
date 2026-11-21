@@ -44,7 +44,7 @@ export class ErrorBoundary extends React.Component<
           </div>
           <p className="mt-3 text-sm leading-relaxed text-[#4A5950]">
             {isQuotaError
-              ? '무료 tier 일일 읽기 한도가 초과되었습니다. 내일 한도가 초기화되거나 Firebase 콘솔에서 요금제를 업그레이드할 수 있습니다.'
+              ? '오늘 무료 사용량 한도에 도달했습니다. 내일 한도가 자동으로 초기화되니 내일 다시 이용해 주세요.'
               : '파이어베이스 연결 또는 권한 확인 중 오류가 발생했습니다. 페이지를 새로고침하거나 다시 로그인해 보세요.'}
           </p>
           <button
