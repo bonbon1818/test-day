@@ -1,0 +1,275 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidUserPublicProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'seededPractice', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'seededPractice', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == request.auth.uid
+        && data.uid == userId
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 120
+        && data.seededPractice is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'lastLoginAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'lastLoginAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == request.auth.uid
+        && data.uid == userId
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && data.lastLoginAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidJournalRecord(data, userId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'title',
+          'category',
+          'content',
+          'status',
+          'recordedAt',
+          'trashedAt',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'title',
+          'category',
+          'content',
+          'status',
+          'recordedAt',
+          'trashedAt',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 200
+        && data.category is string
+        && data.category.size() >= 1
+        && data.category.size() <= 20
+        && data.category in ['일상', '배움', '아이디어']
+        && data.content is string
+        && data.content.size() >= 1
+        && data.content.size() <= 5000
+        && data.status is string
+        && data.status.size() >= 1
+        && data.status.size() <= 20
+        && data.status in ['active', 'trashed']
+        && (data.recordedAt is int || data.recordedAt is float)
+        && data.recordedAt > 0
+        && (
+          (data.status == 'active' && data.trashedAt == null)
+          || (data.status == 'trashed' && data.trashedAt is timestamp)
+        )
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Rules
+    match /users/{userId} {
+      allow get: if isSignedIn()
+        && isVerifiedUser()
+        && isValidId(userId)
+        && isOwner(userId)
+        && (resource == null || existing().uid == request.auth.uid);
+
+      allow list: if false;
+
+      allow create: if isSignedIn()
+        && isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserPublicProfile(incoming(), userId)
+        && isOwner(userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isSignedIn()
+        && isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserPublicProfile(incoming(), userId)
+        && isOwner(userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+          || (
+            existing().seededPractice == false
+            && incoming().seededPractice == true
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'seededPractice', 'updatedAt'])
+          )
+          || (
+            existing().seededPractice == false
+            && incoming().seededPractice == true
+            && incoming().diff(existing()).affectedKeys().hasOnly(['seededPractice', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
+
+      match /private/{docId} {
+        allow get: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isOwner(userId)
+          && (resource == null || existing().uid == request.auth.uid);
+
+        allow list: if false;
+
+        allow create: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isValidUserPrivateInfo(incoming(), userId)
+          && isOwner(userId)
+          && incoming().lastLoginAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(userId))
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+
+        allow update: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isValidUserPrivateInfo(incoming(), userId)
+          && isOwner(userId)
+          && incoming().uid == existing().uid
+          && incoming().lastLoginAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'lastLoginAt', 'updatedAt']);
+
+        allow delete: if false;
+      }
+
+      match /entries/{entryId} {
+        allow get: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(entryId)
+          && isOwner(userId)
+          && (resource == null || existing().ownerId == request.auth.uid);
+
+        allow list: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isOwner(userId)
+          && existing().ownerId == request.auth.uid;
+
+        allow create: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(entryId)
+          && isValidJournalRecord(incoming(), userId)
+          && isOwner(userId)
+          && incoming().status == 'active'
+          && incoming().trashedAt == null
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(userId))
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+
+        allow update: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(entryId)
+          && isValidJournalRecord(incoming(), userId)
+          && isOwner(userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().recordedAt == existing().recordedAt
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && (
+            // Action 1: Edit active entry content/title/category
+            (
+              existing().status == 'active'
+              && incoming().status == 'active'
+              && incoming().trashedAt == null
+              && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'category', 'content', 'updatedAt'])
+            )
+            // Action 2: Move active entry to trash
+            || (
+              existing().status == 'active'
+              && incoming().status == 'trashed'
+              && incoming().trashedAt == request.time
+              && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'trashedAt', 'updatedAt'])
+            )
+            // Action 3: Restore trashed entry back to active
+            || (
+              existing().status == 'trashed'
+              && incoming().status == 'active'
+              && incoming().trashedAt == null
+              && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'trashedAt', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(entryId)
+          && isOwner(userId)
+          && existing().ownerId == request.auth.uid
+          && existing().status == 'trashed';
+      }
+    }
+  }
+}

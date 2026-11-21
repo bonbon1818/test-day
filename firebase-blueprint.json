@@ -1,0 +1,151 @@
+{
+  "entities": {
+    "UserPublicProfile": {
+      "title": "UserPublicProfile",
+      "description": "Publicly scoped non-PII user profile metadata and initial practice-seed tracking.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Authentication user UID."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "User display name shown in the UI."
+        },
+        "seededPractice": {
+          "type": "boolean",
+          "description": "Whether initial practice journal records have been seeded for this user."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the user profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the user profile was last updated."
+        }
+      },
+      "required": ["uid", "displayName", "seededPractice", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated private PII and login tracking metadata for the authenticated user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Authentication user UID."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254,
+          "description": "Verified account email address."
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the most recent login."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the most recent private record update."
+        }
+      },
+      "required": ["uid", "email", "lastLoginAt", "updatedAt"]
+    },
+    "JournalRecord": {
+      "title": "JournalRecord",
+      "description": "A daily one-line journal entry belonging to a single user (active or trashed).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the user who owns this journal record."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Entry title."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["일상", "배움", "아이디어"],
+          "description": "Journal entry category."
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 5000,
+          "description": "Journal entry body text."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "trashed"],
+          "description": "Lifecycle status of the entry."
+        },
+        "recordedAt": {
+          "type": "number",
+          "description": "Immutable journal date timestamp in epoch milliseconds."
+        },
+        "trashedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when moved to trash, or null when active."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last update."
+        }
+      },
+      "required": [
+        "ownerId",
+        "title",
+        "category",
+        "content",
+        "status",
+        "recordedAt",
+        "trashedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublicProfile" },
+      "description": "Owner-only user profile document tracking non-PII display info and seed flag."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated private PII document (docId: info) containing verified email and login timestamp."
+    },
+    "/users/{userId}/entries/{entryId}": {
+      "schema": { "$ref": "#/entities/JournalRecord" },
+      "description": "User-owned journal entries (both active and trashed records)."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "하루 한 줄 기록장",
+  "description": "오늘의 작은 발견을 일상, 배움, 아이디어로 차곡차곡 남기는 따뜻한 기록장입니다.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
